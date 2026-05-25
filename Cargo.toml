@@ -1,0 +1,12 @@
+[package]
+name = "nbt-printer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nbt-printer"
+path = "src/main.rs"
+
+[dependencies]
+quartz_nbt = "0.2"
+anyhow = "1"
