@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-version:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      should-release: ${{ steps.check-tag.outputs.should-release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+      - name: Get version from Cargo.toml
+        id: get-version
+        run: |
+          version=$(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check if tag exists
+        id: check-tag
+        run: |
+          if git tag --list "v${{ steps.get-version.outputs.version }}" | grep -q .; then
+            echo "Tag v${{ steps.get-version.outputs.version }} already exists — skipping release."
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag v${{ steps.get-version.outputs.version }} not found — will release."
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: check-version
+    if: needs.check-version.outputs.should-release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            use-cross: true
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.use-cross == true
+        run: cargo install cross --locked
+      - name: Build with cross
+        if: matrix.use-cross == true
+        run: cross build --release --target ${{ matrix.target }}
+      - name: Build
+        if: matrix.use-cross != true
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          tar czvf nbt-printer-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release nbt-printer
+          echo "ARTIFACT=nbt-printer-${{ matrix.target }}.tar.gz" >> "$GITHUB_ENV"
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path target\${{ matrix.target }}\release\nbt-printer.exe `
+            -DestinationPath nbt-printer-${{ matrix.target }}.zip
+          "ARTIFACT=nbt-printer-${{ matrix.target }}.zip" | Out-File -Append -FilePath $env:GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nbt-printer-${{ matrix.target }}
+          path: ${{ env.ARTIFACT }}
+
+  release:
+    name: Create release
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: v${{ needs.check-version.outputs.version }}
+          files: artifacts/**
+          generate_release_notes: true
