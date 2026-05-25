@@ -59,7 +59,7 @@ fn looks_like_snbt(data: &[u8]) -> bool {
 
 struct Args {
     color: ColorMode,
-    file:  Option<PathBuf>,
+    file: Option<PathBuf>,
 }
 
 // Accepts: nbt-printer [--color=auto|always|never] [file]
@@ -78,7 +78,9 @@ fn parse_args() -> Result<Args> {
         } else if file.is_none() {
             file = Some(PathBuf::from(&arg));
         } else {
-            bail!("unexpected argument: {arg}\nusage: nbt-printer [--color=auto|always|never] [file]");
+            bail!(
+                "unexpected argument: {arg}\nusage: nbt-printer [--color=auto|always|never] [file]"
+            );
         }
     }
 
@@ -87,34 +89,38 @@ fn parse_args() -> Result<Args> {
 
 fn parse_color_value(v: &str) -> Result<ColorMode> {
     match v {
-        "auto"   => Ok(ColorMode::Auto),
+        "auto" => Ok(ColorMode::Auto),
         "always" => Ok(ColorMode::Always),
-        "never"  => Ok(ColorMode::Never),
-        other    => bail!("invalid --color value: {other} (expected auto, always, or never)"),
+        "never" => Ok(ColorMode::Never),
+        other => bail!("invalid --color value: {other} (expected auto, always, or never)"),
     }
 }
 
 // -- Color mode / palette --
 
-enum ColorMode { Auto, Always, Never }
+enum ColorMode {
+    Auto,
+    Always,
+    Never,
+}
 
 // ANSI escape codes for each semantic role. All fields are empty when color is off.
 struct Palette {
-    key:    &'static str, // compound keys
+    key: &'static str,    // compound keys
     string: &'static str, // string values
     number: &'static str, // numeric digits
     suffix: &'static str, // type suffix letters (b, s, L, f, d)
-    punct:  &'static str, // brackets, braces, commas, colons
-    array:  &'static str, // [B; / [I; / [L; prefix letter
-    reset:  &'static str,
+    punct: &'static str,  // brackets, braces, commas, colons
+    array: &'static str,  // [B; / [I; / [L; prefix letter
+    reset: &'static str,
 }
 
 impl Palette {
     fn resolve(mode: ColorMode) -> Self {
         let use_color = match mode {
             ColorMode::Always => true,
-            ColorMode::Never  => false,
-            ColorMode::Auto   => {
+            ColorMode::Never => false,
+            ColorMode::Auto => {
                 // Respect the NO_COLOR convention (https://no-color.org).
                 std::env::var_os("NO_COLOR").is_none() && io::stdout().is_terminal()
             }
@@ -122,16 +128,24 @@ impl Palette {
 
         if use_color {
             Self {
-                key:    "\x1b[1;34m",  // bold blue  - same as jq object keys
-                string: "\x1b[0;32m",  // green      - same as jq strings
-                number: "\x1b[0;36m",  // cyan
-                suffix: "\x1b[2;36m",  // dim cyan   - de-emphasised type tags
-                punct:  "\x1b[1m",     // bold       - same as jq structural chars
-                array:  "\x1b[0;35m",  // magenta    - array-type prefix letter
-                reset:  "\x1b[0m",
+                key: "\x1b[1;34m",    // bold blue  - same as jq object keys
+                string: "\x1b[0;32m", // green      - same as jq strings
+                number: "\x1b[0;36m", // cyan
+                suffix: "\x1b[2;36m", // dim cyan   - de-emphasised type tags
+                punct: "\x1b[1m",     // bold       - same as jq structural chars
+                array: "\x1b[0;35m",  // magenta    - array-type prefix letter
+                reset: "\x1b[0m",
             }
         } else {
-            Self { key: "", string: "", number: "", suffix: "", punct: "", array: "", reset: "" }
+            Self {
+                key: "",
+                string: "",
+                number: "",
+                suffix: "",
+                punct: "",
+                array: "",
+                reset: "",
+            }
         }
     }
 }
@@ -143,11 +157,17 @@ const INDENT: &str = "  ";
 fn print_tag(w: &mut impl Write, tag: &NbtTag, depth: usize, p: &Palette) -> Result<()> {
     let r = p.reset;
     match tag {
-        NbtTag::Byte(b)   => write!(w, "{}{b}{r}{}b{r}", p.number, p.suffix)?,
-        NbtTag::Short(s)  => write!(w, "{}{s}{r}{}s{r}", p.number, p.suffix)?,
-        NbtTag::Int(i)    => write!(w, "{}{i}{r}", p.number)?,
-        NbtTag::Long(l)   => write!(w, "{}{l}{r}{}L{r}", p.number, p.suffix)?,
-        NbtTag::Float(f)  => write!(w, "{}{}{r}{}f{r}", p.number, format_float(*f as f64), p.suffix)?,
+        NbtTag::Byte(b) => write!(w, "{}{b}{r}{}b{r}", p.number, p.suffix)?,
+        NbtTag::Short(s) => write!(w, "{}{s}{r}{}s{r}", p.number, p.suffix)?,
+        NbtTag::Int(i) => write!(w, "{}{i}{r}", p.number)?,
+        NbtTag::Long(l) => write!(w, "{}{l}{r}{}L{r}", p.number, p.suffix)?,
+        NbtTag::Float(f) => write!(
+            w,
+            "{}{}{r}{}f{r}",
+            p.number,
+            format_float(*f as f64),
+            p.suffix
+        )?,
         NbtTag::Double(d) => write!(w, "{}{}{r}{}d{r}", p.number, format_float(*d), p.suffix)?,
         NbtTag::String(s) => write!(w, "{}{}{r}", p.string, quote_string(s))?,
 
@@ -155,7 +175,9 @@ fn print_tag(w: &mut impl Write, tag: &NbtTag, depth: usize, p: &Palette) -> Res
         NbtTag::ByteArray(arr) => {
             write!(w, "{}[{r}{}B{r}{};{r}", p.punct, p.array, p.punct)?;
             for (i, b) in arr.iter().enumerate() {
-                if i > 0 { write!(w, "{},{r}", p.punct)?; }
+                if i > 0 {
+                    write!(w, "{},{r}", p.punct)?;
+                }
                 write!(w, " {}{b}{r}{}b{r}", p.number, p.suffix)?;
             }
             write!(w, " {}]{r}", p.punct)?;
@@ -163,7 +185,9 @@ fn print_tag(w: &mut impl Write, tag: &NbtTag, depth: usize, p: &Palette) -> Res
         NbtTag::IntArray(arr) => {
             write!(w, "{}[{r}{}I{r}{};{r}", p.punct, p.array, p.punct)?;
             for (i, v) in arr.iter().enumerate() {
-                if i > 0 { write!(w, "{},{r}", p.punct)?; }
+                if i > 0 {
+                    write!(w, "{},{r}", p.punct)?;
+                }
                 write!(w, " {}{v}{r}", p.number)?;
             }
             write!(w, " {}]{r}", p.punct)?;
@@ -171,7 +195,9 @@ fn print_tag(w: &mut impl Write, tag: &NbtTag, depth: usize, p: &Palette) -> Res
         NbtTag::LongArray(arr) => {
             write!(w, "{}[{r}{}L{r}{};{r}", p.punct, p.array, p.punct)?;
             for (i, v) in arr.iter().enumerate() {
-                if i > 0 { write!(w, "{},{r}", p.punct)?; }
+                if i > 0 {
+                    write!(w, "{},{r}", p.punct)?;
+                }
                 write!(w, " {}{v}{r}{}L{r}", p.number, p.suffix)?;
             }
             write!(w, " {}]{r}", p.punct)?;
@@ -185,11 +211,13 @@ fn print_tag(w: &mut impl Write, tag: &NbtTag, depth: usize, p: &Palette) -> Res
             writeln!(w, "{}[{r}", p.punct)?;
             let child_depth = depth + 1;
             let prefix = INDENT.repeat(child_depth);
-            let close  = INDENT.repeat(depth);
+            let close = INDENT.repeat(depth);
             for (i, item) in list.iter().enumerate() {
                 write!(w, "{prefix}")?;
                 print_tag(w, item, child_depth, p)?;
-                if i + 1 < list.len() { write!(w, "{},{r}", p.punct)?; }
+                if i + 1 < list.len() {
+                    write!(w, "{},{r}", p.punct)?;
+                }
                 writeln!(w)?;
             }
             write!(w, "{close}{}]{r}", p.punct)?;
@@ -212,7 +240,7 @@ fn print_compound(w: &mut impl Write, map: &NbtCompound, depth: usize, p: &Palet
     writeln!(w, "{}{{{r}", p.punct)?;
     let child_depth = depth + 1;
     let prefix = INDENT.repeat(child_depth);
-    let close  = INDENT.repeat(depth);
+    let close = INDENT.repeat(depth);
     // Sort keys for deterministic output.
     let mut keys: Vec<&String> = inner.keys().collect();
     keys.sort();
@@ -220,7 +248,9 @@ fn print_compound(w: &mut impl Write, map: &NbtCompound, depth: usize, p: &Palet
         let val = &inner[*key];
         write!(w, "{prefix}{}{}{r}{}: ", p.key, quote_key(key), p.punct)?;
         print_tag(w, val, child_depth, p)?;
-        if i + 1 < inner.len() { write!(w, "{},{r}", p.punct)?; }
+        if i + 1 < inner.len() {
+            write!(w, "{},{r}", p.punct)?;
+        }
         writeln!(w)?;
     }
     write!(w, "{close}{}}}{r}", p.punct)?;
@@ -231,7 +261,11 @@ fn print_compound(w: &mut impl Write, map: &NbtCompound, depth: usize, p: &Palet
 
 // Quotes a compound key. Simple identifiers don't need quotes.
 fn quote_key(key: &str) -> String {
-    if !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.') {
+    if !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
         key.to_owned()
     } else {
         quote_string(key)
@@ -255,8 +289,20 @@ fn quote_string(s: &str) -> String {
 // Formats a float/double without redundant trailing zeros, but always with a
 // decimal point so the type is visually unambiguous from integers.
 fn format_float(v: f64) -> String {
-    if v.is_nan()      { return "NaN".to_owned(); }
-    if v.is_infinite() { return if v > 0.0 { "Infinity".to_owned() } else { "-Infinity".to_owned() }; }
+    if v.is_nan() {
+        return "NaN".to_owned();
+    }
+    if v.is_infinite() {
+        return if v > 0.0 {
+            "Infinity".to_owned()
+        } else {
+            "-Infinity".to_owned()
+        };
+    }
     let s = format!("{v}");
-    if s.contains('.') || s.contains('e') || s.contains('E') { s } else { format!("{s}.0") }
+    if s.contains('.') || s.contains('e') || s.contains('E') {
+        s
+    } else {
+        format!("{s}.0")
+    }
 }
